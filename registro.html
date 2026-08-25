@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registro · Diagnóstico MIO-Oil</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="tag">
+    <div class="brand">
+      <div class="brand-mark">MIO</div>
+      <div class="brand-name">MATERIALES INDUSTRIALES DE OCCIDENTE, C.A.</div>
+    </div>
+
+    <p class="eyebrow">Paso 1 de 2</p>
+    <h2>Datos de la entrevista</h2>
+    <p>Completa estos datos antes de comenzar. Se registrarán junto con tus respuestas.</p>
+
+    <form id="form-registro" novalidate>
+      <div class="field">
+        <label for="nombre">Nombre completo</label>
+        <input type="text" id="nombre" required>
+      </div>
+
+      <div class="field">
+        <label for="cargo">Cargo / puesto</label>
+        <input type="text" id="cargo" required>
+      </div>
+
+      <div class="field">
+        <label for="departamento">Departamento / área</label>
+        <select id="departamento" required>
+          <option value="" disabled selected>Selecciona un departamento…</option>
+          <option value="taller">Taller</option>
+          <option value="almacen">Inventario y Almacén</option>
+          <option value="campo">Campo (Operaciones)</option>
+          <option value="calidad">Calidad</option>
+          <option value="hse">HSE (Seguridad Industrial y Ambiente)</option>
+          <option value="finanzas">Finanzas</option>
+          <option value="ventas">Aplicaciones y Ventas</option>
+          <option value="presidencia">Presidencia</option>
+          <option value="contrataciones">Contrataciones</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="entrevistador">Entrevistador</label>
+        <select id="entrevistador" required>
+          <option value="" disabled selected>Selecciona…</option>
+          <option value="Josué Junior González Fernández">Josué Junior González Fernández</option>
+          <option value="Luis Arturo Vega Gutiérrez">Luis Arturo Vega Gutiérrez</option>
+        </select>
+      </div>
+
+      <div class="actions">
+        <a href="index.html" class="btn btn-ghost">Volver</a>
+        <button type="submit" class="btn btn-primary">Iniciar entrevista</button>
+      </div>
+    </form>
+  </div>
+
+<script>
+document.getElementById('form-registro').addEventListener('submit', function(e){
+  e.preventDefault();
+  const datos = {
+    sessionId: 'S' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    nombre: document.getElementById('nombre').value.trim(),
+    cargo: document.getElementById('cargo').value.trim(),
+    departamento: document.getElementById('departamento').value,
+    entrevistador: document.getElementById('entrevistador').value,
+    fecha: new Date().toISOString().slice(0,10)
+  };
+  sessionStorage.setItem('mio_registro', JSON.stringify(datos));
+  window.location.href = 'entrevista.html';
+});
+</script>
+
+</body>
+</html>
