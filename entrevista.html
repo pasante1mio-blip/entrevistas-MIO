@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrevista · Diagnóstico MIO-Oil</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="tag" id="app">
+    <div class="brand">
+      <div class="brand-mark">MIO</div>
+      <div class="brand-name" id="dept-name">—</div>
+    </div>
+
+    <span class="plate-number" id="plate">PREGUNTA 00/00</span>
+    <div class="progress-track"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+
+    <p class="question-text" id="pregunta-texto">Cargando…</p>
+
+    <div class="mode-switch">
+      <button type="button" id="btn-modo-texto" class="active">Responder en texto</button>
+      <button type="button" id="btn-modo-audio">Responder en audio</button>
+    </div>
+
+    <div id="panel-texto">
+      <textarea id="respuesta-texto" placeholder="Escribe tu respuesta aquí…"></textarea>
+    </div>
+
+    <div id="panel-audio" class="rec-panel" style="display:none;">
+      <div id="rec-idle">
+        <button type="button" class="btn btn-primary" id="btn-grabar">● Iniciar grabación</button>
+        <p class="hint">Al presionar, el navegador pedirá permiso para usar el micrófono.</p>
+      </div>
+      <div id="rec-activo" style="display:none;">
+        <p><span class="rec-dot"></span>Grabando…</p>
+        <button type="button" class="btn btn-ghost" id="btn-detener">◼ Detener</button>
+      </div>
+      <div id="rec-listo" style="display:none;">
+        <audio id="audio-preview" controls></audio>
+        <p class="hint"><button type="button" class="btn btn-ghost" id="btn-regrabar" style="margin-top:8px;">Grabar de nuevo</button></p>
+      </div>
+      <p class="hint" id="audio-error" style="color:#B23A3A; display:none;">
+        No se pudo acceder al micrófono. Puedes responder en texto en su lugar.
+      </p>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn btn-ghost" id="btn-anterior">Anterior</button>
+      <button type="button" class="btn btn-primary" id="btn-siguiente">Siguiente</button>
+    </div>
+    <p class="status-line" id="status-line"></p>
+  </div>
+
+<script src="js/questions.js"></script>
+<script src="js/config.js"></script>
+<script>
+// ---------- Estado ----------
+const registro = JSON.parse(sessionStorage.getItem('mio_registro') || 'null');
+if (!registro) { window.location.href = 'registro.html'; }
+
+const dept = DEPARTAMENTOS[registro.departamento];
+if (!dept) { window.location.href = 'registro.html'; }
+
+document.getElementById('dept-name').textContent = dept.label.toUpperCase();
+
+const TOTAL = dept.preguntas.length;
+let idx = 0;
+let modo = 'texto'; // 'texto' | 'audio'
+let mediaRecorder = null;
+let chunks = [];
+let audioBase64 = null;
+let stream = null;
+
+// Guarda respuestas ya dadas por si el usuario retrocede
+const respuestasGuardadas = {};
+
+const elPlate = document.getElementById('plate');
+const elProgress = document.getElementById('progress');
+const elPregunta = document.getElementById('pregunta-texto');
+const elTexto = document.getElementById('respuesta-texto');
+const elStatus = document.getElementById('status-line');
+const elSiguiente = document.getElementById('btn-siguiente');
+const elAnterior = document.getElementById('btn-anterior');
+
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function render(){
+  elPlate.textContent = `PREGUNTA ${pad(idx+1)}/${pad(TOTAL)}`;
+  elProgress.style.width = `${((idx)/TOTAL)*100}%`;
+  elPregunta.textContent = dept.preguntas[idx];
+  elAnterior.style.display = idx === 0 ? 'none' : 'inline-block';
+  elSiguiente.textContent = idx === TOTAL - 1 ? 'Finalizar' : 'Siguiente';
+
+  // Restaurar respuesta previa si existe
+  resetAudioUI();
+  setModo('texto');
+  elTexto.value = '';
+  const prev = respuestasGuardadas[idx];
+  if (prev) {
+    if (prev.tipo === 'texto') {
+      elTexto.value = prev.valor;
+    } else if (prev.tipo === 'audio') {
+      setModo('audio');
+      audioBase64 = prev.valor;
+      mostrarAudioListo(prev.previewUrl);
+    }
+  }
+}
+
+function setModo(nuevo){
+  modo = nuevo;
+  document.getElementById('btn-modo-texto').classList.toggle('active', modo === 'texto');
+  document.getElementById('btn-modo-audio').classList.toggle('active', modo === 'audio');
+  document.getElementById('panel-texto').style.display = modo === 'texto' ? 'block' : 'none';
+  document.getElementById('panel-audio').style.display = modo === 'audio' ? 'block' : 'none';
+}
+
+document.getElementById('btn-modo-texto').addEventListener('click', () => setModo('texto'));
+document.getElementById('btn-modo-audio').addEventListener('click', () => setModo('audio'));
+
+// ---------- Grabación de audio ----------
+function resetAudioUI(){
+  document.getElementById('rec-idle').style.display = 'block';
+  document.getElementById('rec-activo').style.display = 'none';
+  document.getElementById('rec-listo').style.display = 'none';
+  document.getElementById('audio-error').style.display = 'none';
+  audioBase64 = null;
+}
+
+function mostrarAudioListo(url){
+  document.getElementById('rec-idle').style.display = 'none';
+  document.getElementById('rec-activo').style.display = 'none';
+  document.getElementById('rec-listo').style.display = 'block';
+  document.getElementById('audio-preview').src = url;
+}
+
+document.getElementById('btn-grabar').addEventListener('click', async () => {
+  document.getElementById('audio-error').style.display = 'none';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    document.getElementById('audio-error').style.display = 'block';
+    return;
+  }
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      audioBase64 = reader.result;
+      mostrarAudioListo(URL.createObjectURL(blob));
+    };
+    reader.readAsDataURL(blob);
+    stream.getTracks().forEach(t => t.stop());
+  };
+  mediaRecorder.start();
+  document.getElementById('rec-idle').style.display = 'none';
+  document.getElementById('rec-activo').style.display = 'block';
+});
+
+document.getElementById('btn-detener').addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+});
+
+document.getElementById('btn-regrabar').addEventListener('click', () => {
+  resetAudioUI();
+});
+
+// ---------- Navegación / envío ----------
+function respuestaActual(){
+  if (modo === 'texto') {
+    return { tipo: 'texto', valor: elTexto.value.trim() };
+  }
+  return { tipo: 'audio', valor: audioBase64, previewUrl: document.getElementById('audio-preview').src };
+}
+
+async function enviarPregunta(numPregunta, pregunta, respuesta){
+  const payload = {
+    sessionId: registro.sessionId,
+    nombre: registro.nombre,
+    cargo: registro.cargo,
+    departamento: dept.label,
+    entrevistador: registro.entrevistador,
+    fecha: registro.fecha,
+    numPregunta: numPregunta,
+    pregunta: pregunta,
+    respuestaTexto: respuesta.tipo === 'texto' ? respuesta.valor : '',
+    audioBase64: respuesta.tipo === 'audio' ? respuesta.valor : ''
+  };
+
+  await fetch(GAS_URL, {
+    method: 'POST',
+    mode: 'no-cors', // Apps Script no envía cabeceras CORS; no-cors evita el bloqueo del navegador
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(payload)
+  });
+}
+
+elSiguiente.addEventListener('click', async () => {
+  const respuesta = respuestaActual();
+
+  if (modo === 'texto' && !respuesta.valor) {
+    elStatus.textContent = 'Escribe una respuesta o cambia a modo audio.';
+    return;
+  }
+  if (modo === 'audio' && !respuesta.valor) {
+    elStatus.textContent = 'Graba una respuesta o cambia a modo texto.';
+    return;
+  }
+
+  respuestasGuardadas[idx] = respuesta;
+
+  elSiguiente.disabled = true;
+  elStatus.textContent = 'Guardando respuesta…';
+  try {
+    await enviarPregunta(idx + 1, dept.preguntas[idx], respuesta);
+    elStatus.textContent = '';
+  } catch (err) {
+    elStatus.textContent = 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.';
+    elSiguiente.disabled = false;
+    return;
+  }
+  elSiguiente.disabled = false;
+
+  if (idx === TOTAL - 1) {
+    sessionStorage.removeItem('mio_registro');
+    window.location.href = 'gracias.html';
+    return;
+  }
+  idx++;
+  render();
+});
+
+elAnterior.addEventListener('click', () => {
+  if (idx > 0) { idx--; render(); }
+});
+
+render();
+</script>
+
+</body>
+</html>
