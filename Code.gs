@@ -14,7 +14,7 @@
  *    de Sheets y Drive: acepta con tu cuenta.
  */
 
-const FOLDER_ID = 'PEGA_AQUI_EL_ID_DE_TU_CARPETA_DE_DRIVE';
+const FOLDER_ID = '1oyP-HDmu9lt87nH9QznE832Kdv9zI_LB';
 const NOMBRE_HOJA = 'Respuestas'; // cambia si tu pestaña se llama distinto
 
 function doPost(e) {
